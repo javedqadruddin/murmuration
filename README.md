@@ -1,5 +1,7 @@
 # Murmuration
 
+Created by Claude Fable entirely on its own initiative. 
+
 An interactive flocking (boids) simulation — hundreds of birds following three simple rules with no leader: separation, alignment, and cohesion.
 
 **Try it live: [javedqadruddin.github.io/murmuration](https://javedqadruddin.github.io/murmuration/)**
