@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Field Station · Murmuration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@125,500..800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --sky-hi:#EAEFF4;
+    --sky-lo:#C7D3DD;
+    --ink:#141B22;
+    --muted:#5C6B78;
+    --hairline:rgba(20,27,34,.18);
+    --tag:#E4572E;          /* bird-ring orange */
+    --panel:rgba(246,248,250,.86);
+    --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --disp:'Archivo',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:var(--mono);
+    color:var(--ink);
+    background:linear-gradient(180deg,var(--sky-hi) 0%,var(--sky-lo) 100%);
+    overflow:hidden;
+  }
+  #sky{position:fixed;inset:0;display:block;cursor:crosshair}
+
+  /* ---------- header ---------- */
+  header{
+    position:fixed;top:0;left:0;right:0;
+    display:flex;align-items:baseline;gap:14px;
+    padding:16px 20px 0;
+    pointer-events:none;
+  }
+  header h1{
+    font-family:var(--disp);
+    font-variation-settings:'wdth' 125,'wght' 750;
+    font-size:clamp(15px,2vw,19px);
+    letter-spacing:.06em;text-transform:uppercase;
+  }
+  header .sub{font-size:11px;color:var(--muted);letter-spacing:.04em}
+
+  /* ---------- regime instrument (signature) ---------- */
+  #regime{
+    position:fixed;top:52px;left:20px;
+    pointer-events:none;
+    border-left:2px solid var(--tag);
+    padding-left:12px;
+  }
+  #regimeName{
+    font-family:var(--disp);
+    font-variation-settings:'wdth' 125,'wght' 800;
+    font-size:clamp(26px,5vw,44px);
+    text-transform:uppercase;letter-spacing:.02em;
+    line-height:1;
+    transition:opacity .3s;
+  }
+  #regimeStats{
+    margin-top:8px;font-size:11px;color:var(--muted);
+    display:grid;grid-template-columns:auto auto;gap:2px 14px;
+  }
+  #regimeStats b{color:var(--ink);font-weight:500}
+
+  /* ---------- instrument rail ---------- */
+  #rail{
+    position:fixed;left:0;right:0;bottom:0;
+    background:var(--panel);
+    backdrop-filter:blur(8px);
+    border-top:1px solid var(--hairline);
+    padding:12px 20px 14px;
+    display:flex;flex-wrap:wrap;gap:10px 26px;align-items:flex-end;
+  }
+  .ctrl{min-width:150px;flex:1 1 150px;max-width:220px}
+  .ctrl label{
+    display:flex;justify-content:space-between;
+    font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--muted);margin-bottom:5px;
+  }
+  .ctrl label output{color:var(--ink);font-weight:500}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track{height:2px;background:var(--hairline)}
+  input[type=range]::-moz-range-track{height:2px;background:var(--hairline)}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+    background:var(--ink);margin-top:-6px;border:none;
+  }
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--ink);border:none}
+  input[type=range]:focus-visible{outline:2px solid var(--tag);outline-offset:4px}
+
+  #buttons{display:flex;gap:8px;flex:0 0 auto;align-items:flex-end}
+  button{
+    font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+    background:none;border:1px solid var(--ink);color:var(--ink);
+    padding:7px 12px;cursor:pointer;border-radius:2px;
+  }
+  button:hover{background:var(--ink);color:var(--sky-hi)}
+  button:focus-visible{outline:2px solid var(--tag);outline-offset:2px}
+  button.preset.active{background:var(--tag);border-color:var(--tag);color:#fff}
+
+  #hint{
+    position:fixed;right:20px;top:16px;font-size:11px;color:var(--muted);
+    text-align:right;pointer-events:none;letter-spacing:.03em;
+  }
+
+  @media (max-width:640px){
+    #rail{gap:8px 16px;max-height:44vh;overflow:auto}
+    .ctrl{min-width:120px;flex:1 1 40%}
+    #hint{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){
+    #regimeName{transition:none}
+  }
+</style>
+</head>
+<body>
+
+<canvas id="sky" aria-label="Flocking simulation. Birds obey three adjustable rules."></canvas>
+
+<header>
+  <h1>Field Station</h1>
+  <span class="sub">boids · three rules, no leader</span>
+</header>
+
+<div id="regime" aria-live="polite">
+  <div id="regimeName">Gathering</div>
+  <div id="regimeStats">
+    <span>polarization <b id="sPol">–</b></span>
+    <span>swirl <b id="sSwirl">–</b></span>
+    <span>spread <b id="sSpread">–</b></span>
+    <span>birds <b id="sCount">–</b></span>
+  </div>
+</div>
+
+<div id="hint">click sky: scatter burst<br>hold: attract the flock</div>
+
+<div id="rail" role="group" aria-label="Flock rules">
+  <div class="ctrl">
+    <label>separation <output id="oSep">1.2</output></label>
+    <input type="range" id="rSep" min="0" max="3" step="0.05" value="1.2">
+  </div>
+  <div class="ctrl">
+    <label>alignment <output id="oAli">1.0</output></label>
+    <input type="range" id="rAli" min="0" max="3" step="0.05" value="1.0">
+  </div>
+  <div class="ctrl">
+    <label>cohesion <output id="oCoh">0.9</output></label>
+    <input type="range" id="rCoh" min="0" max="3" step="0.05" value="0.9">
+  </div>
+  <div class="ctrl">
+    <label>sight radius <output id="oPer">60</output></label>
+    <input type="range" id="rPer" min="20" max="140" step="1" value="60">
+  </div>
+  <div class="ctrl">
+    <label>speed <output id="oSpd">3.0</output></label>
+    <input type="range" id="rSpd" min="1" max="6" step="0.1" value="3">
+  </div>
+  <div id="buttons">
+    <button class="preset" data-p="murmur">Murmur</button>
+    <button class="preset" data-p="swarm">Swarm</button>
+    <button class="preset" data-p="stream">Stream</button>
+    <button class="preset" data-p="chaos">Chaos</button>
+    <button id="pause" aria-pressed="false">Pause</button>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+const cv = document.getElementById('sky');
+const cx = cv.getContext('2d');
+let W = 0, H = 0, DPR = Math.min(devicePixelRatio || 1, 2);
+
+function resize(){
+  W = innerWidth; H = innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+addEventListener('resize', resize); resize();
+
+/* ---------- parameters ---------- */
+const P = { sep:1.2, ali:1.0, coh:0.9, per:60, spd:3.0 };
+const N_TARGET = () => Math.min(420, Math.max(160, Math.floor(W * H / 3800)));
+
+const presets = {
+  murmur:{sep:1.2, ali:1.0, coh:0.9, per:60, spd:3.0},
+  swarm: {sep:0.6, ali:0.1, coh:2.2, per:90, spd:2.4},
+  stream:{sep:0.9, ali:2.6, coh:0.5, per:80, spd:4.2},
+  chaos: {sep:2.6, ali:0.0, coh:0.0, per:40, spd:4.5},
+};
+
+/* ---------- birds ---------- */
+const birds = [];
+function spawn(n){
+  for(let i=0;i<n;i++){
+    const a = Math.random()*Math.PI*2;
+    birds.push({
+      x:Math.random()*W, y:Math.random()*H,
+      vx:Math.cos(a)*P.spd, vy:Math.sin(a)*P.spd,
+      tint: .55 + Math.random()*.45      // ink density variation
+    });
+  }
+}
+spawn(N_TARGET());
+
+/* ---------- spatial hash ---------- */
+let grid = new Map();
+function key(cx_, cy_){ return cx_ + cy_ * 4096; }
+function rebuildGrid(cell){
+  grid.clear();
+  for(let i=0;i<birds.length;i++){
+    const b = birds[i];
+    const k = key(Math.floor(b.x/cell), Math.floor(b.y/cell));
+    let arr = grid.get(k);
+    if(!arr){ arr = []; grid.set(k, arr); }
+    arr.push(b);
+  }
+}
+
+/* ---------- pointer ---------- */
+const ptr = { x:0, y:0, mode:0, downAt:0 };  // mode: 0 none, 1 attract, -1 repel burst
+cv.addEventListener('pointerdown', e => {
+  ptr.x = e.clientX; ptr.y = e.clientY; ptr.downAt = performance.now();
+  ptr.mode = 1;
+});
+cv.addEventListener('pointermove', e => { ptr.x = e.clientX; ptr.y = e.clientY; });
+addEventListener('pointerup', () => {
+  if(performance.now() - ptr.downAt < 180){
+    // quick click → scatter burst
+    burst(ptr.x, ptr.y);
+  }
+  ptr.mode = 0;
+});
+function burst(bx, by){
+  for(const b of birds){
+    const dx = b.x - bx, dy = b.y - by;
+    const d2 = dx*dx + dy*dy;
+    if(d2 < 220*220){
+      const d = Math.sqrt(d2) || 1;
+      const f = (1 - d/220) * 9;
+      b.vx += dx/d * f; b.vy += dy/d * f;
+    }
+  }
+}
+
+/* ---------- simulation ---------- */
+let paused = false;
+function step(){
+  const per = P.per, per2 = per*per;
+  const cell = per;
+  rebuildGrid(cell);
+  const maxSpd = P.spd, maxF = 0.06 * maxSpd;
+
+  for(const b of birds){
+    let sx=0, sy=0, ax=0, ay=0, cxm=0, cym=0, n=0;
+    const gx = Math.floor(b.x/cell), gy = Math.floor(b.y/cell);
+    for(let ox=-1; ox<=1; ox++) for(let oy=-1; oy<=1; oy++){
+      const arr = grid.get(key(gx+ox, gy+oy));
+      if(!arr) continue;
+      for(const o of arr){
+        if(o === b) continue;
+        let dx = o.x - b.x, dy = o.y - b.y;
+        // wrap-aware deltas
+        if(dx >  W/2) dx -= W; else if(dx < -W/2) dx += W;
+        if(dy >  H/2) dy -= H; else if(dy < -H/2) dy += H;
+        const d2 = dx*dx + dy*dy;
+        if(d2 > per2 || d2 === 0) continue;
+        n++;
+        // separation (inverse-square-ish)
+        const inv = 1/d2;
+        sx -= dx*inv; sy -= dy*inv;
+        // alignment
+        ax += o.vx; ay += o.vy;
+        // cohesion
+        cxm += dx; cym += dy;
+      }
+    }
+    let fx = 0, fy = 0;
+    if(n > 0){
+      // normalize each rule to a steering force, then weight
+      fx += steerX(b, sx, sy, maxSpd, maxF) * P.sep;
+      fy += steerY(b, sx, sy, maxSpd, maxF) * P.sep;
+      fx += steerX(b, ax/n, ay/n, maxSpd, maxF) * P.ali;
+      fy += steerY(b, ax/n, ay/n, maxSpd, maxF) * P.ali;
+      fx += steerX(b, cxm/n, cym/n, maxSpd, maxF) * P.coh;
+      fy += steerY(b, cxm/n, cym/n, maxSpd, maxF) * P.coh;
+    }
+    // pointer attraction while held
+    if(ptr.mode === 1 && performance.now() - ptr.downAt > 180){
+      let dx = ptr.x - b.x, dy = ptr.y - b.y;
+      const d = Math.hypot(dx, dy) || 1;
+      fx += dx/d * maxF * 2.2; fy += dy/d * maxF * 2.2;
+    }
+    b.vx += fx; b.vy += fy;
+    // clamp speed (min speed keeps them bird-like, never hovering)
+    const sp = Math.hypot(b.vx, b.vy) || 1e-6;
+    const target = Math.min(Math.max(sp, maxSpd*0.5), maxSpd);
+    b.vx = b.vx/sp * target; b.vy = b.vy/sp * target;
+  }
+  for(const b of birds){
+    b.x += b.vx; b.y += b.vy;
+    if(b.x < 0) b.x += W; else if(b.x >= W) b.x -= W;
+    if(b.y < 0) b.y += H; else if(b.y >= H) b.y -= H;
+  }
+}
+// steering helper: desired direction*maxSpd minus current velocity, clipped
+function steerX(b, dx, dy, ms, mf){
+  const m = Math.hypot(dx, dy); if(m === 0) return 0;
+  let x = dx/m*ms - b.vx, y = dy/m*ms - b.vy;
+  const f = Math.hypot(x, y); return f > mf ? x/f*mf : x;
+}
+function steerY(b, dx, dy, ms, mf){
+  const m = Math.hypot(dx, dy); if(m === 0) return 0;
+  let x = dx/m*ms - b.vx, y = dy/m*ms - b.vy;
+  const f = Math.hypot(x, y); return f > mf ? y/f*mf : y;
+}
+
+/* ---------- order parameters & regime ---------- */
+const sPol = document.getElementById('sPol'),
+      sSwirl = document.getElementById('sSwirl'),
+      sSpread = document.getElementById('sSpread'),
+      sCount = document.getElementById('sCount'),
+      regimeName = document.getElementById('regimeName');
+let regime = 'Gathering', regimeHold = 0;
+
+function measure(){
+  const n = birds.length; if(!n) return;
+  let mvx=0, mvy=0, mx=0, my=0, msp=0;
+  for(const b of birds){
+    mvx += b.vx; mvy += b.vy;
+    mx += b.x; my += b.y;
+    msp += Math.hypot(b.vx, b.vy);
+  }
+  mvx/=n; mvy/=n; mx/=n; my/=n; msp/=n;
+  const pol = Math.hypot(mvx, mvy) / (msp || 1);           // 0..1 common heading
+  let L = 0, spread = 0;
+  for(const b of birds){
+    const rx = b.x - mx, ry = b.y - my;
+    const r = Math.hypot(rx, ry) || 1;
+    L += (rx*(b.vy-mvy) - ry*(b.vx-mvx)) / (r * (msp||1)); // normalized angular momentum
+    spread += r;
+  }
+  L = Math.abs(L/n);                                        // 0..~1 rotation about centroid
+  spread = spread/n / Math.hypot(W, H) * 2;                 // ~0 compact … ~1 diffuse
+
+  sPol.textContent = pol.toFixed(2);
+  sSwirl.textContent = L.toFixed(2);
+  sSpread.textContent = spread.toFixed(2);
+  sCount.textContent = n;
+
+  // classify
+  let r;
+  if(pol > 0.75)                      r = 'Stream';
+  else if(L > 0.45)                   r = 'Vortex';
+  else if(spread < 0.34 && pol < 0.6) r = 'Swarm';
+  else if(spread > 0.52 && pol < 0.4) r = 'Scatter';
+  else                                r = 'Murmuration';
+  if(r !== regime){
+    if(++regimeHold > 30){            // require stability before renaming
+      regime = r; regimeHold = 0;
+      regimeName.style.opacity = 0;
+      setTimeout(() => { regimeName.textContent = regime; regimeName.style.opacity = 1; }, 160);
+    }
+  } else regimeHold = 0;
+}
+
+/* ---------- render ---------- */
+function draw(){
+  cx.clearRect(0, 0, W, H);
+  cx.lineCap = 'round';
+  for(const b of birds){
+    const sp = Math.hypot(b.vx, b.vy) || 1;
+    const ux = b.vx/sp, uy = b.vy/sp;
+    const len = 5 + sp * 1.1;
+    cx.strokeStyle = `rgba(20,27,34,${b.tint})`;
+    cx.lineWidth = 1.4;
+    cx.beginPath();
+    cx.moveTo(b.x - ux*len*0.6, b.y - uy*len*0.6);
+    cx.lineTo(b.x + ux*len*0.4, b.y + uy*len*0.4);
+    cx.stroke();
+    // wing tick
+    cx.beginPath();
+    cx.moveTo(b.x, b.y);
+    cx.lineTo(b.x - uy*3, b.y + ux*3);
+    cx.stroke();
+  }
+}
+
+/* ---------- loop ---------- */
+let frame = 0;
+function loop(){
+  if(!paused){
+    step();
+    if(++frame % 6 === 0) measure();
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ---------- controls ---------- */
+function bind(id, out, k, fmt){
+  const el = document.getElementById(id), o = document.getElementById(out);
+  el.addEventListener('input', () => {
+    P[k] = parseFloat(el.value);
+    o.textContent = fmt ? fmt(P[k]) : P[k];
+    clearActive();
+  });
+  return el;
+}
+const rSep = bind('rSep','oSep','sep', v=>v.toFixed(2));
+const rAli = bind('rAli','oAli','ali', v=>v.toFixed(2));
+const rCoh = bind('rCoh','oCoh','coh', v=>v.toFixed(2));
+const rPer = bind('rPer','oPer','per', v=>v.toFixed(0));
+const rSpd = bind('rSpd','oSpd','spd', v=>v.toFixed(1));
+
+function clearActive(){ document.querySelectorAll('.preset').forEach(b => b.classList.remove('active')); }
+document.querySelectorAll('.preset').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = presets[btn.dataset.p];
+    Object.assign(P, p);
+    rSep.value = p.sep; rAli.value = p.ali; rCoh.value = p.coh; rPer.value = p.per; rSpd.value = p.spd;
+    document.getElementById('oSep').textContent = p.sep.toFixed(2);
+    document.getElementById('oAli').textContent = p.ali.toFixed(2);
+    document.getElementById('oCoh').textContent = p.coh.toFixed(2);
+    document.getElementById('oPer').textContent = p.per.toFixed(0);
+    document.getElementById('oSpd').textContent = p.spd.toFixed(1);
+    clearActive(); btn.classList.add('active');
+  });
+});
+document.querySelector('.preset[data-p="murmur"]').classList.add('active');
+
+const pauseBtn = document.getElementById('pause');
+pauseBtn.addEventListener('click', () => {
+  paused = !paused;
+  pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+  pauseBtn.setAttribute('aria-pressed', String(paused));
+});
+
+// honor reduced motion: start paused with a hint in the button
+if(matchMedia('(prefers-reduced-motion: reduce)').matches){
+  paused = true; pauseBtn.textContent = 'Resume';
+  pauseBtn.setAttribute('aria-pressed','true');
+  step(); measure();  // settle one frame so the sky isn't empty
+}
+})();
+</script>
+</body>
+</html>
